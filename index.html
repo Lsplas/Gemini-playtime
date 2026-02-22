@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chapter 5: JS Prototype V10</title>
+    <title>Chapter 5: JS Prototype V11</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; }
         canvas { display: block; }
@@ -40,7 +40,7 @@
 </head>
 <body>
     <div id="blocker" class="overlay">
-        <h1>PLAYTIME: TEXTURE UPDATE</h1>
+        <h1>PLAYTIME: FULL GAMEPLAY</h1>
         <p>Click anywhere to begin</p>
         <div class="controls">
             <span class="key">W A S D</span> Move &nbsp;|&nbsp; <span class="key">Mouse</span> Look<br><br>
@@ -90,6 +90,7 @@
                 else if (type === 'scan') { osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.setValueAtTime(900, now + 0.1); gainNode.gain.setValueAtTime(0.2, now); gainNode.gain.linearRampToValueAtTime(0, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
                 else if (type === 'door') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(40, now); gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.linearRampToValueAtTime(0, now + 2.0); osc.start(now); osc.stop(now + 2.0); }
                 else if (type === 'step') { osc.type = 'sine'; osc.frequency.setValueAtTime(50, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.2); gainNode.gain.setValueAtTime(0.6, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
+                else if (type === 'error') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.setValueAtTime(100, now + 0.1); gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.linearRampToValueAtTime(0, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
             }
         }
 
@@ -113,78 +114,100 @@
             overheadLight.position.set(0, 15, i * -40 + 20); scene.add(overheadLight);
         }
 
-        // --- NEW: PROCEDURAL TEXTURE GENERATION ---
+        // --- TEXTURES ---
         function createHazardTexture() {
             const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#ffaa00'; ctx.fillRect(0, 0, 256, 256); // Yellow base
-            ctx.fillStyle = '#111111'; // Black stripes
+            ctx.fillStyle = '#ffaa00'; ctx.fillRect(0, 0, 256, 256); 
+            ctx.fillStyle = '#111111'; 
             for(let i = -256; i < 512; i += 64) {
-                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + 32, 0);
-                ctx.lineTo(i + 256 + 32, 256); ctx.lineTo(i + 256, 256); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + 32, 0); ctx.lineTo(i + 256 + 32, 256); ctx.lineTo(i + 256, 256); ctx.fill();
             }
             const tex = new THREE.CanvasTexture(canvas);
-            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(4, 2);
-            return tex;
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(4, 2); return tex;
         }
 
         function createCrateTexture() {
             const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#3a2818'; ctx.fillRect(0, 0, 256, 256); // Base brown
-            ctx.strokeStyle = '#22150a'; ctx.lineWidth = 15;
-            ctx.strokeRect(0, 0, 256, 256); // Border
-            ctx.lineWidth = 10;
-            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(256,256); ctx.stroke(); // X Cross
-            ctx.beginPath(); ctx.moveTo(256,0); ctx.lineTo(0,256); ctx.stroke();
-            return new THREE.CanvasTexture(canvas);
+            ctx.fillStyle = '#3a2818'; ctx.fillRect(0, 0, 256, 256); 
+            ctx.strokeStyle = '#22150a'; ctx.lineWidth = 15; ctx.strokeRect(0, 0, 256, 256); 
+            ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(256,256); ctx.stroke(); 
+            ctx.beginPath(); ctx.moveTo(256,0); ctx.lineTo(0,256); ctx.stroke(); return new THREE.CanvasTexture(canvas);
         }
 
         function createFloorTexture() {
             const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, 256, 256); // Base dark
+            ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, 256, 256); 
             ctx.strokeStyle = '#000000'; ctx.lineWidth = 2;
             ctx.strokeRect(0, 0, 128, 128); ctx.strokeRect(128, 128, 128, 128);
             ctx.fillStyle = '#1e1e1e'; ctx.fillRect(0, 128, 128, 128); ctx.fillRect(128, 0, 128, 128);
             const tex = new THREE.CanvasTexture(canvas);
-            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(50, 50);
-            return tex;
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(50, 50); return tex;
         }
 
-        // --- APPLY TEXTURES ---
+        // --- MAP ARCHITECTURE ---
         const objects = []; 
         const floorGeo = new THREE.PlaneGeometry(300, 300);
         const floorMat = new THREE.MeshStandardMaterial({ map: createFloorTexture(), roughness: 0.8 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 
+        // Crates
         const boxGeo = new THREE.BoxGeometry(4, 5, 4);
         const boxMat = new THREE.MeshStandardMaterial({ map: createCrateTexture(), roughness: 0.9 });
         for (let i = 0; i < 60; i++) {
             const box = new THREE.Mesh(boxGeo, boxMat);
-            box.position.set((Math.random() - 0.5) * 150, 2.5, (Math.random() - 0.5) * 120 - 40);
+            // Don't spawn crates inside the wall
+            let zPos = (Math.random() - 0.5) * 120 - 40;
+            if (zPos > -35 && zPos < -25) zPos -= 10; 
+            box.position.set((Math.random() - 0.5) * 150, 2.5, zPos);
             box.castShadow = true; box.receiveShadow = true; scene.add(box); objects.push(box);
         }
+
+        // THE NEW DIVIDING WALLS
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1.0 });
+        const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(100, 20, 2), wallMat);
+        wallLeft.position.set(-57.5, 10, -30); scene.add(wallLeft); objects.push(wallLeft);
+        
+        const wallRight = new THREE.Mesh(new THREE.BoxGeometry(100, 20, 2), wallMat);
+        wallRight.position.set(57.5, 10, -30); scene.add(wallRight); objects.push(wallRight);
+
+        const wallTop = new THREE.Mesh(new THREE.BoxGeometry(15, 10, 2), wallMat);
+        wallTop.position.set(0, 15, -30); scene.add(wallTop); objects.push(wallTop);
+
+        // The Gate
+        const gate = new THREE.Mesh(new THREE.BoxGeometry(15, 10, 2), new THREE.MeshStandardMaterial({ map: createHazardTexture(), metalness: 0.2 }));
+        gate.position.set(0, 5, -30); scene.add(gate); let gateTargetY = 5; 
+
+        // The Scanner (Mounted on the left wall)
+        const scanner = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0x220000 })); 
+        scanner.position.set(-8, 3.5, -28.9); scanner.userData = { isScanner: true, isActivated: false };
+        scene.add(scanner); objects.push(scanner); 
 
         const elevator = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9 }));
         elevator.position.set(0, 0.25, -130); scene.add(elevator);
         const eleLight = new THREE.PointLight(0x00ff00, 1.5, 20); eleLight.position.set(0, 4, -130); scene.add(eleLight);
         let hasWon = false;
 
-        // Apply Hazard Stripes to Gate
-        const gate = new THREE.Mesh(new THREE.BoxGeometry(15, 10, 2), new THREE.MeshStandardMaterial({ map: createHazardTexture(), metalness: 0.2 }));
-        gate.position.set(0, 5, -30); scene.add(gate); let gateTargetY = 5; 
+        // --- GAMEPLAY ITEMS ---
+        // GrabPack
+        let hasGrabPack = false;
+        const gpItem = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x008888 }));
+        gpItem.position.set(10, 2.5, 5); scene.add(gpItem);
+        const pedLight = new THREE.PointLight(0x00ffff, 1, 15); pedLight.position.set(10, 3, 5); scene.add(pedLight);
 
-        const scanner = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 0.5), new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 })); 
-        scanner.position.set(-8, 3, -29); scanner.userData = { isScanner: true, isActivated: false };
-        scene.add(scanner); objects.push(scanner); 
+        // Power Cell
+        let hasPowerCell = false;
+        const cellItem = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.6), new THREE.MeshStandardMaterial({ color: 0x0000ff, emissive: 0x0000ff }));
+        cellItem.position.set(-15, 1.5, 15); scene.add(cellItem);
+        const cellLight = new THREE.PointLight(0x0000ff, 1.5, 15); cellLight.position.set(-15, 2, 15); scene.add(cellLight);
 
-        // --- ENEMIES & COLLECTIBLES ---
+        // Enemy
         const enemyGrp = new THREE.Group();
         const metalMat = new THREE.MeshStandardMaterial({ color: 0x444455, metalness: 0.9, roughness: 0.3 });
         const redGlow = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xcc0000 });
-
         const spine = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 6), metalMat); spine.position.y = 4;
         const chest = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 0.8), metalMat); chest.position.y = 6.5;
         const head = new THREE.Mesh(new THREE.BoxGeometry(1, 1.2, 1), metalMat); head.position.y = 8;
@@ -192,15 +215,9 @@
         const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.15), redGlow); eyeR.position.set(0.25, 8.1, 0.5);
         const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.05, 5), metalMat); armL.position.set(-1.2, 4.5, 0); armL.rotation.z = Math.PI / 6;
         const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.05, 5), metalMat); armR.position.set(1.2, 4.5, 0); armR.rotation.z = -Math.PI / 6;
-
         enemyGrp.add(spine, chest, head, eyeL, eyeR, armL, armR);
         enemyGrp.position.set(0, 0, -80); scene.add(enemyGrp);
         let isEnemyActive = false; let lastStepTime = 0;
-
-        let hasGrabPack = false;
-        const gpItem = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x008888 }));
-        gpItem.position.set(10, 2.5, -10); scene.add(gpItem);
-        const pedLight = new THREE.PointLight(0x00ffff, 1, 15); pedLight.position.set(10, 3, -10); scene.add(pedLight);
 
         function createHand(baseColorHex) {
             const handGrp = new THREE.Group();
@@ -224,20 +241,18 @@
         let normalHeight = 3.0, crouchHeight = 1.2, currentTargetHeight = normalHeight;
         let isCrouching = false, canJump = false, isDead = false;
         let isSprinting = false; let stamina = 100; const maxStamina = 100;
-        const staminaBar = document.getElementById('stamina-bar');
+        let bobTime = 0; // NEW: For camera head-bobbing
         
+        const staminaBar = document.getElementById('stamina-bar');
         const velocity = new THREE.Vector3(), direction = new THREE.Vector3();
         let moveF = false, moveB = false, moveL = false, moveR = false;
         
         let pitchObj = new THREE.Object3D(); pitchObj.add(camera);
-        let yawObj = new THREE.Object3D(); yawObj.position.set(0, normalHeight, 15); yawObj.add(pitchObj);
+        let yawObj = new THREE.Object3D(); yawObj.position.set(0, normalHeight, 25); yawObj.add(pitchObj);
         scene.add(yawObj);
 
         const blocker = document.getElementById('blocker');
-        document.addEventListener('click', () => { 
-            initAudio(); if (blocker.style.display !== 'none' && !isDead && !hasWon) document.body.requestPointerLock(); 
-        });
-        
+        document.addEventListener('click', () => { initAudio(); if (blocker.style.display !== 'none' && !isDead && !hasWon) document.body.requestPointerLock(); });
         document.addEventListener('pointerlockchange', () => {
             if(!isDead && !hasWon) {
                 blocker.style.display = document.pointerLockElement === document.body ? 'none' : 'flex';
@@ -283,11 +298,17 @@
             if (intersects.length > 0) {
                 const hitObj = intersects[0].object;
                 if (hitObj.userData.isScanner && !hitObj.userData.isActivated) {
-                    hitObj.userData.isActivated = true; hitObj.material.color.setHex(0x00ff00); hitObj.material.emissive.setHex(0x005500);
-                    gateTargetY = 15; isEnemyActive = true; 
-                    playSound('scan'); setTimeout(() => playSound('door'), 500); 
-                    uiObjective.innerText = 'Run to the Green Elevator!'; uiObjective.style.color = '#00ff00';
-                } else if (!hitObj.userData.isScanner) {
+                    if (!hasPowerCell) {
+                        playSound('error');
+                        uiObjective.innerText = 'NO POWER: Find Blue Cell!'; uiObjective.style.color = '#ff0000';
+                    } else {
+                        hitObj.userData.isActivated = true; hitObj.material.color.setHex(0x00ff00); hitObj.material.emissive.setHex(0x005500);
+                        gateTargetY = 15; isEnemyActive = true; 
+                        playSound('scan'); setTimeout(() => playSound('door'), 500); 
+                        uiObjective.innerText = 'Run to the Green Elevator!'; uiObjective.style.color = '#00ff00';
+                    }
+                } else if (!hitObj.userData.isScanner && hitObj !== wallLeft && hitObj !== wallRight && hitObj !== wallTop) {
+                    // Only pull smaller objects
                     const pullDir = new THREE.Vector3().subVectors(yawObj.position, hitObj.position).normalize();
                     hitObj.position.addScaledVector(pullDir, 4); hitObj.position.y = 2.5; 
                 }
@@ -316,12 +337,21 @@
 
             if (gate.position.y < gateTargetY) gate.position.y += 2 * delta;
 
+            // Collectibles Logic
             if (!hasGrabPack) {
                 gpItem.rotation.y += 2 * delta;
                 if (yawObj.position.distanceTo(gpItem.position) < 3.5) {
                     hasGrabPack = true; scene.remove(gpItem, pedLight); fpModelGroup.visible = true;
                     playSound('scan'); document.getElementById('status').innerText = 'READY'; document.getElementById('status').style.color = '#00ff00';
-                    uiObjective.innerText = 'Scan the Gate Button';
+                    uiObjective.innerText = 'Find the Blue Power Cell';
+                }
+            } else if (!hasPowerCell) {
+                cellItem.rotation.y += 2 * delta;
+                if (yawObj.position.distanceTo(cellItem.position) < 3.5) {
+                    hasPowerCell = true; scene.remove(cellItem, cellLight);
+                    playSound('scan'); scanner.material.color.setHex(0xff0000); scanner.material.emissive.setHex(0xff0000); // Power on
+                    document.getElementById('status').innerText = 'CELL ACQUIRED'; document.getElementById('status').style.color = '#0055ff';
+                    uiObjective.innerText = 'Power & Scan the Gate Button';
                 }
             }
 
@@ -331,8 +361,9 @@
                 document.getElementById('gamewin').style.display = 'flex'; playSound('scan');
             }
 
+            const isMoving = moveF || moveB || moveL || moveR;
+
             if (!isDead) {
-                const isMoving = moveF || moveB || moveL || moveR;
                 if (isSprinting && isMoving) {
                     stamina -= 35 * delta; if (stamina <= 0) { stamina = 0; isSprinting = false; }
                 } else {
@@ -341,8 +372,19 @@
                 staminaBar.style.width = stamina + '%';
                 if (stamina < 20) { staminaBar.style.backgroundColor = '#ff0000'; staminaBar.style.boxShadow = '0 0 10px #ff0000'; } 
                 else { staminaBar.style.backgroundColor = '#00ffcc'; staminaBar.style.boxShadow = '0 0 10px #00ffcc'; }
+
+                // Head Bobbing
+                if (isMoving && canJump) {
+                    let bobSpeed = isSprinting ? 15 : (isCrouching ? 5 : 10);
+                    let bobAmt = isSprinting ? 0.2 : (isCrouching ? 0.05 : 0.1);
+                    bobTime += delta * bobSpeed;
+                    pitchObj.position.y = Math.sin(bobTime) * bobAmt;
+                } else {
+                    pitchObj.position.y += (0 - pitchObj.position.y) * 10 * delta;
+                }
             }
 
+            // Enemy Logic
             if (isEnemyActive && !isDead) {
                 const distToPlayer = yawObj.position.distanceTo(enemyGrp.position);
                 enemyGrp.position.y = Math.sin(time * 10) * 0.5;
@@ -364,6 +406,7 @@
                 }
             }
 
+            // Movement
             if (!isDead) {
                 yawObj.position.y += (currentTargetHeight - yawObj.position.y) * 10 * delta; 
                 let currentSpeed = 45.0; if (isCrouching) currentSpeed = 20.0; else if (isSprinting && stamina > 0) currentSpeed = 85.0; 
