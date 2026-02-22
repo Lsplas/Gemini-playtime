@@ -3,51 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chapter 5: JS Prototype V5</title>
+    <title>Chapter 5: JS Prototype V10</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; }
         canvas { display: block; }
         #ui { position: absolute; top: 15px; left: 15px; color: #fff; z-index: 10; font-weight: bold; font-size: 1.2rem; pointer-events: none; text-shadow: 0 0 5px #fff; }
         #objective { position: absolute; top: 15px; right: 15px; color: #ffaa00; z-index: 10; font-weight: bold; font-size: 1.2rem; pointer-events: none; text-shadow: 0 0 5px #ffaa00; text-align: right; }
+        
         #crosshair { 
-            position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; 
-            background: #fff; border-radius: 50%; transform: translate(-50%, -50%); 
-            z-index: 10; pointer-events: none; mix-blend-mode: difference;
+            position: absolute; top: 50%; left: 50%; width: 24px; height: 24px; 
+            border: 2px solid rgba(255, 255, 255, 0.5); border-radius: 50%; 
+            transform: translate(-50%, -50%); z-index: 10; pointer-events: none; 
+            display: flex; justify-content: center; align-items: center;
         }
-        .overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 20;
+        #crosshair::after { content: ''; width: 4px; height: 4px; background: rgba(255, 255, 255, 0.8); border-radius: 50%; }
+        
+        #stamina-container {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            width: 300px; height: 10px; background: rgba(50, 50, 50, 0.8);
+            border: 2px solid #222; border-radius: 5px; z-index: 10; display: none;
         }
-        #blocker { background: radial-gradient(circle, rgba(20,20,20,0.95) 0%, rgba(0,0,0,1) 100%); color: white; }
-        #gameover { background: rgba(150, 0, 0, 0.9); color: white; display: none; }
+        #stamina-bar { width: 100%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.1s linear; }
+
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; flex-direction: column; z-index: 20; }
+        #blocker { background: radial-gradient(circle, rgba(40,40,50,0.95) 0%, rgba(0,0,0,1) 100%); color: white; }
+        #gameover { background: rgba(150, 0, 0, 0.95); color: white; display: none; }
+        #gamewin { background: rgba(0, 100, 0, 0.9); color: white; display: none; }
+        
         h1 { color: #00ffff; text-shadow: 0 0 15px #00ffff; letter-spacing: 3px; margin-bottom: 5px; }
-        #gameover h1 { color: #000; text-shadow: 0 0 20px #ff0000; font-size: 4rem; }
-        .controls { color: #aaa; margin-top: 20px; text-align: center; line-height: 1.8; }
-        .key { background: #333; padding: 2px 6px; border-radius: 4px; color: #fff; }
+        #gameover h1 { color: #000; text-shadow: 0 0 20px #ff0000; font-size: 4rem; margin: 0; }
+        #gamewin h1 { color: #fff; text-shadow: 0 0 20px #00ff00; font-size: 4rem; }
+        .controls { color: #ccc; margin-top: 20px; text-align: center; line-height: 1.8; }
+        .key { background: #444; padding: 2px 6px; border-radius: 4px; color: #fff; font-weight: bold; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
     <div id="blocker" class="overlay">
-        <h1>PLAYTIME: PROTO-HUNT</h1>
-        <p>Click anywhere to begin (Turns on Audio)</p>
+        <h1>PLAYTIME: TEXTURE UPDATE</h1>
+        <p>Click anywhere to begin</p>
         <div class="controls">
-            <span class="key">W A S D</span> Move &nbsp;|&nbsp; <span class="key">Mouse</span> Look &nbsp;|&nbsp; <span class="key">Space</span> Jump<br>
-            <span class="key">Shift / C</span> Crouch (STEALTH) &nbsp;|&nbsp; <span class="key">Left Click</span> Fire GrabPack
+            <span class="key">W A S D</span> Move &nbsp;|&nbsp; <span class="key">Mouse</span> Look<br><br>
+            <span class="key">Shift</span> Sprint &nbsp;|&nbsp; <span class="key">C</span> Crouch (Stealth)<br><br>
+            <span class="key">Left Click</span> Fire GrabPack &nbsp;|&nbsp; <span class="key">Space</span> Jump
         </div>
     </div>
 
     <div id="gameover" class="overlay">
-        <h1>YOU WERE CAUGHT</h1>
+        <h1>IT CAUGHT YOU</h1>
         <p>Refresh the page to try again.</p>
+    </div>
+
+    <div id="gamewin" class="overlay">
+        <h1>YOU ESCAPED</h1>
+        <p>The prototype could not catch you. Refresh to play again.</p>
     </div>
     
     <div id="ui">STATUS: <span id="status" style="color:red">UNARMED</span></div>
     <div id="objective">OBJECTIVE:<br><span id="obj-text">Find the GrabPack</span></div>
     <div id="crosshair"></div>
+    <div id="stamina-container"><div id="stamina-bar"></div></div>
 
     <script>
-        // --- 0. SYNTHETIC AUDIO SYSTEM ---
+        // --- AUDIO SYSTEM ---
         let audioCtx;
         function initAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -56,54 +74,29 @@
 
         function playSound(type) {
             if (!audioCtx) return;
-            const osc = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-            osc.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
             const now = audioCtx.currentTime;
-            
-            if (type === 'shoot') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(300, now);
-                osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
-                gainNode.gain.setValueAtTime(0.2, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-                osc.start(now); osc.stop(now + 0.1);
-            } else if (type === 'scan') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(600, now);
-                osc.frequency.setValueAtTime(900, now + 0.1);
-                gainNode.gain.setValueAtTime(0.2, now);
-                gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
-                osc.start(now); osc.stop(now + 0.3);
-            } else if (type === 'door') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(40, now);
-                gainNode.gain.setValueAtTime(0.3, now);
-                gainNode.gain.linearRampToValueAtTime(0, now + 2.0);
-                osc.start(now); osc.stop(now + 2.0);
-            } else if (type === 'step') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(60, now);
-                osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
-                gainNode.gain.setValueAtTime(0.5, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-                osc.start(now); osc.stop(now + 0.2);
-            } else if (type === 'jumpscare') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(100, now);
-                osc.frequency.linearRampToValueAtTime(800, now + 0.5);
-                gainNode.gain.setValueAtTime(0.8, now);
-                gainNode.gain.linearRampToValueAtTime(0, now + 1.0);
-                osc.start(now); osc.stop(now + 1.0);
+            if (type === 'jumpscare') {
+                const freqs = [150, 220, 310];
+                freqs.forEach(freq => {
+                    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(freq, now); osc.frequency.exponentialRampToValueAtTime(freq * 6, now + 0.8);
+                    gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0, now + 1.2);
+                    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now + 1.2);
+                });
+            } else {
+                const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();
+                osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+                if (type === 'shoot') { osc.type = 'square'; osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.1); gainNode.gain.setValueAtTime(0.2, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1); osc.start(now); osc.stop(now + 0.1); }
+                else if (type === 'scan') { osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.setValueAtTime(900, now + 0.1); gainNode.gain.setValueAtTime(0.2, now); gainNode.gain.linearRampToValueAtTime(0, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
+                else if (type === 'door') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(40, now); gainNode.gain.setValueAtTime(0.3, now); gainNode.gain.linearRampToValueAtTime(0, now + 2.0); osc.start(now); osc.stop(now + 2.0); }
+                else if (type === 'step') { osc.type = 'sine'; osc.frequency.setValueAtTime(50, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.2); gainNode.gain.setValueAtTime(0.6, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
             }
         }
 
-        // --- 1. SCENE SETUP ---
+        // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x010101);
-        scene.fog = new THREE.FogExp2(0x010101, 0.03); 
+        scene.background = new THREE.Color(0x0a0a0a); 
+        scene.fog = new THREE.FogExp2(0x0a0a0a, 0.02); 
 
         const camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -111,98 +104,127 @@
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0x0a0a0a);
-        scene.add(ambientLight);
+        const ambientLight = new THREE.AmbientLight(0x333333); scene.add(ambientLight);
+        const flashLight = new THREE.SpotLight(0xffeedd, 2.0, 70, Math.PI / 4, 0.5, 1);
+        flashLight.castShadow = true; scene.add(flashLight); scene.add(flashLight.target);
 
-        const flashLight = new THREE.SpotLight(0xffeedd, 1.5, 50, Math.PI / 5, 0.5, 1);
-        flashLight.castShadow = true;
-        scene.add(flashLight);
-        scene.add(flashLight.target);
-
-        // --- 2. ENVIRONMENT ---
-        const objects = []; 
-        
-        const floorGeo = new THREE.PlaneGeometry(200, 200);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.2 });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
-
-        const gridHelper = new THREE.GridHelper(200, 100, 0x0044ff, 0x111111);
-        gridHelper.position.y = 0.01; 
-        scene.add(gridHelper);
-
-        const boxGeo = new THREE.BoxGeometry(4, 5, 4);
-        const boxMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
-        for (let i = 0; i < 40; i++) {
-            const box = new THREE.Mesh(boxGeo, boxMat);
-            box.position.set((Math.random() - 0.5) * 150, 2.5, (Math.random() - 0.5) * 150);
-            box.castShadow = true;
-            box.receiveShadow = true;
-            scene.add(box);
-            objects.push(box);
+        for (let i = 0; i < 4; i++) {
+            const overheadLight = new THREE.PointLight(0xaaccff, 0.6, 60);
+            overheadLight.position.set(0, 15, i * -40 + 20); scene.add(overheadLight);
         }
 
-        // --- 3. THE GATE & HAND SCANNER ---
-        const gateGeo = new THREE.BoxGeometry(15, 10, 2);
-        const gateMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 });
-        const gate = new THREE.Mesh(gateGeo, gateMat);
-        gate.position.set(0, 5, -30); 
-        scene.add(gate);
-        let gateTargetY = 5; 
+        // --- NEW: PROCEDURAL TEXTURE GENERATION ---
+        function createHazardTexture() {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffaa00'; ctx.fillRect(0, 0, 256, 256); // Yellow base
+            ctx.fillStyle = '#111111'; // Black stripes
+            for(let i = -256; i < 512; i += 64) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + 32, 0);
+                ctx.lineTo(i + 256 + 32, 256); ctx.lineTo(i + 256, 256); ctx.fill();
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(4, 2);
+            return tex;
+        }
 
-        const scannerGeo = new THREE.BoxGeometry(1.5, 1.5, 0.5);
-        const scannerMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 }); 
-        const scanner = new THREE.Mesh(scannerGeo, scannerMat);
-        scanner.position.set(-8, 3, -29);
-        scanner.userData = { isScanner: true, isActivated: false };
-        scene.add(scanner);
-        objects.push(scanner); 
+        function createCrateTexture() {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#3a2818'; ctx.fillRect(0, 0, 256, 256); // Base brown
+            ctx.strokeStyle = '#22150a'; ctx.lineWidth = 15;
+            ctx.strokeRect(0, 0, 256, 256); // Border
+            ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(256,256); ctx.stroke(); // X Cross
+            ctx.beginPath(); ctx.moveTo(256,0); ctx.lineTo(0,256); ctx.stroke();
+            return new THREE.CanvasTexture(canvas);
+        }
 
-        // --- 4. THE PROTOTYPE ENEMY ---
+        function createFloorTexture() {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, 256, 256); // Base dark
+            ctx.strokeStyle = '#000000'; ctx.lineWidth = 2;
+            ctx.strokeRect(0, 0, 128, 128); ctx.strokeRect(128, 128, 128, 128);
+            ctx.fillStyle = '#1e1e1e'; ctx.fillRect(0, 128, 128, 128); ctx.fillRect(128, 0, 128, 128);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(50, 50);
+            return tex;
+        }
+
+        // --- APPLY TEXTURES ---
+        const objects = []; 
+        const floorGeo = new THREE.PlaneGeometry(300, 300);
+        const floorMat = new THREE.MeshStandardMaterial({ map: createFloorTexture(), roughness: 0.8 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+        const boxGeo = new THREE.BoxGeometry(4, 5, 4);
+        const boxMat = new THREE.MeshStandardMaterial({ map: createCrateTexture(), roughness: 0.9 });
+        for (let i = 0; i < 60; i++) {
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            box.position.set((Math.random() - 0.5) * 150, 2.5, (Math.random() - 0.5) * 120 - 40);
+            box.castShadow = true; box.receiveShadow = true; scene.add(box); objects.push(box);
+        }
+
+        const elevator = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 10), new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9 }));
+        elevator.position.set(0, 0.25, -130); scene.add(elevator);
+        const eleLight = new THREE.PointLight(0x00ff00, 1.5, 20); eleLight.position.set(0, 4, -130); scene.add(eleLight);
+        let hasWon = false;
+
+        // Apply Hazard Stripes to Gate
+        const gate = new THREE.Mesh(new THREE.BoxGeometry(15, 10, 2), new THREE.MeshStandardMaterial({ map: createHazardTexture(), metalness: 0.2 }));
+        gate.position.set(0, 5, -30); scene.add(gate); let gateTargetY = 5; 
+
+        const scanner = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 0.5), new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 })); 
+        scanner.position.set(-8, 3, -29); scanner.userData = { isScanner: true, isActivated: false };
+        scene.add(scanner); objects.push(scanner); 
+
+        // --- ENEMIES & COLLECTIBLES ---
         const enemyGrp = new THREE.Group();
-        
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x000022, roughness: 1 });
-        const bodyGeo = new THREE.CylinderGeometry(1.2, 0.8, 9, 16);
-        const enemyBody = new THREE.Mesh(bodyGeo, bodyMat);
-        enemyBody.position.y = 4.5;
-        enemyBody.castShadow = true;
-        
-        const eyeGeo = new THREE.SphereGeometry(0.25);
-        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-        leftEye.position.set(-0.4, 8, 1);
-        const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-        rightEye.position.set(0.4, 8, 1);
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x444455, metalness: 0.9, roughness: 0.3 });
+        const redGlow = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xcc0000 });
 
-        enemyGrp.add(enemyBody, leftEye, rightEye);
-        enemyGrp.position.set(0, 0, -80); 
-        scene.add(enemyGrp);
-        
-        let isEnemyActive = false;
-        let lastStepTime = 0;
+        const spine = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 6), metalMat); spine.position.y = 4;
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 0.8), metalMat); chest.position.y = 6.5;
+        const head = new THREE.Mesh(new THREE.BoxGeometry(1, 1.2, 1), metalMat); head.position.y = 8;
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.15), redGlow); eyeL.position.set(-0.25, 8.1, 0.5);
+        const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.15), redGlow); eyeR.position.set(0.25, 8.1, 0.5);
+        const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.05, 5), metalMat); armL.position.set(-1.2, 4.5, 0); armL.rotation.z = Math.PI / 6;
+        const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.05, 5), metalMat); armR.position.set(1.2, 4.5, 0); armR.rotation.z = -Math.PI / 6;
 
-        // --- 5. COLLECTABLE GRABPACK ---
+        enemyGrp.add(spine, chest, head, eyeL, eyeR, armL, armR);
+        enemyGrp.position.set(0, 0, -80); scene.add(enemyGrp);
+        let isEnemyActive = false; let lastStepTime = 0;
+
         let hasGrabPack = false;
         const gpItem = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x00ffff, emissive: 0x008888 }));
-        gpItem.position.set(10, 2.5, -10);
-        scene.add(gpItem);
+        gpItem.position.set(10, 2.5, -10); scene.add(gpItem);
+        const pedLight = new THREE.PointLight(0x00ffff, 1, 15); pedLight.position.set(10, 3, -10); scene.add(pedLight);
 
-        const pedLight = new THREE.PointLight(0x00ffff, 1, 15);
-        pedLight.position.set(10, 3, -10);
-        scene.add(pedLight);
+        function createHand(baseColorHex) {
+            const handGrp = new THREE.Group();
+            const gloveMat = new THREE.MeshStandardMaterial({ color: baseColorHex, roughness: 0.6 });
+            const mechMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const wrist = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.4), mechMat); wrist.rotation.x = Math.PI / 2; handGrp.add(wrist);
+            const palm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.25), gloveMat); palm.position.set(0, 0, -0.25); handGrp.add(palm);
+            const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.25), mechMat); f1.position.set(-0.12, 0, -0.45);
+            const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.25), mechMat); f2.position.set(0, 0, -0.48);
+            const f3 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.25), mechMat); f3.position.set(0.12, 0, -0.45);
+            const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.2), mechMat); thumb.position.set(0.25, 0, -0.25); thumb.rotation.y = Math.PI / 4;
+            handGrp.add(f1, f2, f3, thumb); return handGrp;
+        }
 
-        const fpModelGroup = new THREE.Group();
-        camera.add(fpModelGroup); 
-        const leftCannon = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 1, 16).rotateX(Math.PI/2), new THREE.MeshStandardMaterial({ color: 0x0055ff }));
-        leftCannon.position.set(-0.6, -0.5, -1.2);
-        fpModelGroup.add(leftCannon);
+        const fpModelGroup = new THREE.Group(); camera.add(fpModelGroup); 
+        const leftHand = createHand(0x0055ff); leftHand.position.set(-0.7, -0.5, -1.2); fpModelGroup.add(leftHand);
+        const rightHand = createHand(0xff0000); rightHand.position.set(0.7, -0.5, -1.2); rightHand.children[4].position.set(-0.25, 0, -0.25); rightHand.children[4].rotation.y = -Math.PI / 4; fpModelGroup.add(rightHand);
         fpModelGroup.visible = false;
 
-        // --- 6. PLAYER CONTROLS ---
+        // --- PLAYER CONTROLS ---
         let normalHeight = 3.0, crouchHeight = 1.2, currentTargetHeight = normalHeight;
         let isCrouching = false, canJump = false, isDead = false;
+        let isSprinting = false; let stamina = 100; const maxStamina = 100;
+        const staminaBar = document.getElementById('stamina-bar');
         
         const velocity = new THREE.Vector3(), direction = new THREE.Vector3();
         let moveF = false, moveB = false, moveL = false, moveR = false;
@@ -213,16 +235,18 @@
 
         const blocker = document.getElementById('blocker');
         document.addEventListener('click', () => { 
-            initAudio(); // Turn on Audio Context on first click
-            if (blocker.style.display !== 'none' && !isDead) document.body.requestPointerLock(); 
+            initAudio(); if (blocker.style.display !== 'none' && !isDead && !hasWon) document.body.requestPointerLock(); 
         });
         
         document.addEventListener('pointerlockchange', () => {
-            if(!isDead) blocker.style.display = document.pointerLockElement === document.body ? 'none' : 'flex';
+            if(!isDead && !hasWon) {
+                blocker.style.display = document.pointerLockElement === document.body ? 'none' : 'flex';
+                document.getElementById('stamina-container').style.display = document.pointerLockElement === document.body ? 'block' : 'none';
+            }
         });
 
         document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === document.body && !isDead) {
+            if (document.pointerLockElement === document.body && !isDead && !hasWon) {
                 yawObj.rotation.y -= e.movementX * 0.002;
                 pitchObj.rotation.x -= e.movementY * 0.002;
                 pitchObj.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObj.rotation.x));
@@ -230,76 +254,65 @@
         });
 
         document.addEventListener('keydown', (e) => {
-            if(isDead) return;
+            if(isDead || hasWon) return;
             switch (e.code) {
                 case 'KeyW': moveF = true; break; case 'KeyA': moveL = true; break;
                 case 'KeyS': moveB = true; break; case 'KeyD': moveR = true; break;
                 case 'Space': if (canJump && !isCrouching) { velocity.y += 12; canJump = false; } break;
-                case 'ShiftLeft': case 'KeyC': isCrouching = true; currentTargetHeight = crouchHeight; break;
+                case 'KeyC': isCrouching = true; currentTargetHeight = crouchHeight; isSprinting = false; break;
+                case 'ShiftLeft': if (!isCrouching && stamina > 0) isSprinting = true; break;
             }
         });
         document.addEventListener('keyup', (e) => {
             switch (e.code) {
                 case 'KeyW': moveF = false; break; case 'KeyA': moveL = false; break;
                 case 'KeyS': moveB = false; break; case 'KeyD': moveR = false; break;
-                case 'ShiftLeft': case 'KeyC': isCrouching = false; currentTargetHeight = normalHeight; break;
+                case 'KeyC': isCrouching = false; currentTargetHeight = normalHeight; break;
+                case 'ShiftLeft': isSprinting = false; break;
             }
         });
 
-        // --- 7. GRABPACK LOGIC ---
-        const raycaster = new THREE.Raycaster();
-        let grabWire = null;
-        const uiStatus = document.getElementById('status'), uiObjective = document.getElementById('obj-text');
+        const raycaster = new THREE.Raycaster(); let grabWire = null; const uiObjective = document.getElementById('obj-text');
 
         document.addEventListener('mousedown', (e) => {
-            if (document.pointerLockElement !== document.body || e.button !== 0 || !hasGrabPack || isDead) return;
-
-            playSound('shoot'); // AUDIO
-            leftCannon.position.z += 0.2; setTimeout(() => leftCannon.position.z -= 0.2, 100);
-
+            if (document.pointerLockElement !== document.body || e.button !== 0 || !hasGrabPack || isDead || hasWon) return;
+            playSound('shoot'); leftHand.position.z += 0.3; setTimeout(() => leftHand.position.z -= 0.3, 100);
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const intersects = raycaster.intersectObjects(objects);
 
             if (intersects.length > 0) {
                 const hitObj = intersects[0].object;
-                
                 if (hitObj.userData.isScanner && !hitObj.userData.isActivated) {
-                    hitObj.userData.isActivated = true;
-                    hitObj.material.color.setHex(0x00ff00); 
-                    hitObj.material.emissive.setHex(0x005500);
-                    gateTargetY = 15; 
-                    isEnemyActive = true; 
-                    
-                    playSound('scan'); // AUDIO
-                    setTimeout(() => playSound('door'), 500); // AUDIO
-                    
-                    uiObjective.innerText = 'SURVIVE.';
-                    uiObjective.style.color = '#ff0000';
+                    hitObj.userData.isActivated = true; hitObj.material.color.setHex(0x00ff00); hitObj.material.emissive.setHex(0x005500);
+                    gateTargetY = 15; isEnemyActive = true; 
+                    playSound('scan'); setTimeout(() => playSound('door'), 500); 
+                    uiObjective.innerText = 'Run to the Green Elevator!'; uiObjective.style.color = '#00ff00';
                 } else if (!hitObj.userData.isScanner) {
                     const pullDir = new THREE.Vector3().subVectors(yawObj.position, hitObj.position).normalize();
-                    hitObj.position.addScaledVector(pullDir, 4); 
-                    hitObj.position.y = 2.5; 
+                    hitObj.position.addScaledVector(pullDir, 4); hitObj.position.y = 2.5; 
                 }
-
                 if (grabWire) scene.remove(grabWire);
-                const startPos = new THREE.Vector3(); leftCannon.getWorldPosition(startPos);
+                const startPos = new THREE.Vector3(); leftHand.getWorldPosition(startPos);
                 grabWire = new THREE.Line(new THREE.BufferGeometry().setFromPoints([startPos, hitObj.position]), new THREE.LineBasicMaterial({ color: 0x00aaff, linewidth: 5 }));
-                scene.add(grabWire);
-                setTimeout(() => { scene.remove(grabWire); grabWire = null; }, 250);
+                scene.add(grabWire); setTimeout(() => { scene.remove(grabWire); grabWire = null; }, 250);
             }
         });
 
-        // --- 8. GAME LOOP ---
         const clock = new THREE.Clock();
         function animate() {
-            if (isDead) return; 
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            const time = clock.getElapsedTime();
+            const delta = clock.getDelta(); const time = clock.getElapsedTime();
 
-            flashLight.position.copy(yawObj.position);
-            const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(pitchObj.getWorldQuaternion(new THREE.Quaternion()));
-            flashLight.target.position.copy(yawObj.position).add(dir);
+            if (hasWon) {
+                elevator.position.y += 5 * delta; yawObj.position.y += 5 * delta;
+                renderer.render(scene, camera); return;
+            }
+
+            if (!isDead) {
+                flashLight.position.copy(yawObj.position);
+                const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(pitchObj.getWorldQuaternion(new THREE.Quaternion()));
+                flashLight.target.position.copy(yawObj.position).add(dir);
+            }
 
             if (gate.position.y < gateTargetY) gate.position.y += 2 * delta;
 
@@ -307,57 +320,68 @@
                 gpItem.rotation.y += 2 * delta;
                 if (yawObj.position.distanceTo(gpItem.position) < 3.5) {
                     hasGrabPack = true; scene.remove(gpItem, pedLight); fpModelGroup.visible = true;
-                    playSound('scan'); // Play collect sound
-                    uiStatus.innerText = 'READY'; uiStatus.style.color = '#00ff00';
+                    playSound('scan'); document.getElementById('status').innerText = 'READY'; document.getElementById('status').style.color = '#00ff00';
                     uiObjective.innerText = 'Scan the Gate Button';
                 }
             }
 
-            if (isEnemyActive) {
+            if (isEnemyActive && yawObj.position.distanceTo(elevator.position) < 5) {
+                hasWon = true; isEnemyActive = false; document.exitPointerLock();
+                document.getElementById('stamina-container').style.display = 'none';
+                document.getElementById('gamewin').style.display = 'flex'; playSound('scan');
+            }
+
+            if (!isDead) {
+                const isMoving = moveF || moveB || moveL || moveR;
+                if (isSprinting && isMoving) {
+                    stamina -= 35 * delta; if (stamina <= 0) { stamina = 0; isSprinting = false; }
+                } else {
+                    if (stamina < maxStamina) { stamina += 20 * delta; if (stamina > maxStamina) stamina = maxStamina; }
+                }
+                staminaBar.style.width = stamina + '%';
+                if (stamina < 20) { staminaBar.style.backgroundColor = '#ff0000'; staminaBar.style.boxShadow = '0 0 10px #ff0000'; } 
+                else { staminaBar.style.backgroundColor = '#00ffcc'; staminaBar.style.boxShadow = '0 0 10px #00ffcc'; }
+            }
+
+            if (isEnemyActive && !isDead) {
                 const distToPlayer = yawObj.position.distanceTo(enemyGrp.position);
-                const aggroRadius = isCrouching ? 20 : 60; 
+                enemyGrp.position.y = Math.sin(time * 10) * 0.5;
 
-                // Dynamic Footstep Audio
-                if (time - lastStepTime > Math.max(0.3, distToPlayer / 40)) {
-                    playSound('step');
-                    lastStepTime = time;
-                }
+                if (time - lastStepTime > Math.max(0.25, distToPlayer / 45)) { playSound('step'); lastStepTime = time; }
 
-                if (distToPlayer < aggroRadius) {
+                if (distToPlayer < (isCrouching ? 20 : 70)) {
                     const moveDir = new THREE.Vector3().subVectors(yawObj.position, enemyGrp.position).normalize();
-                    moveDir.y = 0; 
-                    enemyGrp.position.addScaledVector(moveDir, 12 * delta); 
-                    enemyGrp.lookAt(yawObj.position);
+                    moveDir.y = 0; enemyGrp.position.addScaledVector(moveDir, 16 * delta); enemyGrp.lookAt(yawObj.position);
                 }
 
-                if (distToPlayer < 3.5) {
-                    isDead = true;
-                    playSound('jumpscare'); // AUDIO
-                    document.exitPointerLock();
-                    document.getElementById('gameover').style.display = 'flex';
+                if (distToPlayer < 4.0) {
+                    isDead = true; playSound('jumpscare'); document.getElementById('stamina-container').style.display = 'none';
+                    const forward = new THREE.Vector3(0,0,-1).applyQuaternion(yawObj.quaternion);
+                    const facePos = new THREE.Vector3().copy(yawObj.position).addScaledVector(forward, 2.5);
+                    enemyGrp.position.copy(facePos); enemyGrp.position.y = yawObj.position.y - 4; enemyGrp.lookAt(yawObj.position);
+                    let shakeInt = setInterval(() => { pitchObj.position.x = (Math.random() - 0.5) * 0.8; pitchObj.position.y = (Math.random() - 0.5) * 0.8; }, 30);
+                    setTimeout(() => { clearInterval(shakeInt); document.exitPointerLock(); document.getElementById('gameover').style.display = 'flex'; }, 1000);
                 }
             }
 
-            yawObj.position.y += (currentTargetHeight - yawObj.position.y) * 10 * delta; 
-            const speed = isCrouching ? 20.0 : 45.0; 
+            if (!isDead) {
+                yawObj.position.y += (currentTargetHeight - yawObj.position.y) * 10 * delta; 
+                let currentSpeed = 45.0; if (isCrouching) currentSpeed = 20.0; else if (isSprinting && stamina > 0) currentSpeed = 85.0; 
 
-            velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta; velocity.y -= 35.0 * delta;
-            direction.z = Number(moveF) - Number(moveB); direction.x = Number(moveR) - Number(moveL); direction.normalize();
+                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta; velocity.y -= 35.0 * delta;
+                direction.z = Number(moveF) - Number(moveB); direction.x = Number(moveR) - Number(moveL); direction.normalize();
 
-            if (moveF || moveB) velocity.z -= direction.z * speed * delta;
-            if (moveL || moveR) velocity.x -= direction.x * speed * delta;
+                if (moveF || moveB) velocity.z -= direction.z * currentSpeed * delta;
+                if (moveL || moveR) velocity.x -= direction.x * currentSpeed * delta;
 
-            yawObj.translateX(-velocity.x * delta); yawObj.translateZ(velocity.z * delta); yawObj.position.y += velocity.y * delta;
-            if (yawObj.position.y < currentTargetHeight) { velocity.y = 0; yawObj.position.y = currentTargetHeight; canJump = true; }
+                yawObj.translateX(-velocity.x * delta); yawObj.translateZ(velocity.z * delta); yawObj.position.y += velocity.y * delta;
+                if (yawObj.position.y < currentTargetHeight) { velocity.y = 0; yawObj.position.y = currentTargetHeight; canJump = true; }
+            }
 
             renderer.render(scene, camera);
         }
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
         animate();
     </script>
 </body>
